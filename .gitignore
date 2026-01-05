@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+# *.ipynb
+
+# Environment Variables
+.env
+
+# Data Files (Large SAR data should not be committed)
+data/
+raw_data/
+*.SAFE/
+*.zip
+*.tar
+*.gz
+
+# Output Files
+outputs/
+results/
+figures/
+*.tif
+*.tiff
+*.nc
+*.h5
+*.hdf
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+credentials.yaml

@@ -1,0 +1,71 @@
+# S1-InSAR Pipeline Configuration File
+# ======================================
+
+# Analysis Region (AOI: Area of Interest)
+# 포항/경주 일대 분석 영역
+aoi:
+  name: "East Korea - Pohang and Gyeongju"
+  min_lon: 128.5
+  max_lon: 129.5
+  min_lat: 35.5
+  max_lat: 36.5
+  epsg: 4326 # WGS84
+
+# Sentinel-1 Data Query Parameters (ASF Data Search)
+sentinel1:
+  platform: "SENTINEL-1"
+  product_type: "SLC" # Single Look Complex
+  sensor_mode: "IW" # Interferometric Wide swath mode
+  polarization: "VV" # Vertical-Vertical
+  orbit_direction: "DESCENDING" # or "ASCENDING"
+
+  # Date range for data query
+  date_range:
+    start: "2023-01-01"
+    end: "2024-12-31"
+
+# InSAR Processing Parameters
+insar:
+  # Interferometric pair selection criteria
+  temporal_baseline:
+    max_days: 60 # 최대 시간 기선 (일)
+    min_days: 12 # 최소 시간 기선
+
+  perpendicular_baseline:
+    max_meters: 150 # 최대 수직 기선 (m)
+    min_meters: 10 # 최소 수직 기선
+
+  # Multilooking parameters
+  multilook:
+    range: 4
+    azimuth: 1
+
+  # Filtering
+  filter:
+    type: "goldstein"
+    strength: 0.5
+
+# SBAS Time-series Analysis
+sbas:
+  reference_point:
+    lon: 129.0
+    lat: 36.0
+  wavelength: 0.0555 # C-band wavelength (m)
+  coherence_threshold: 0.3
+
+# Output Settings
+output:
+  format: "GeoTIFF"
+  coordinate_system: "EPSG:4326"
+  visualization:
+    colormap: "jet"
+    dpi: 300
+
+# Path Configuration
+paths:
+  data_dir: "./data"
+  raw_data_dir: "./data/raw"
+  processed_dir: "./data/processed"
+  output_dir: "./outputs"
+  log_dir: "./logs"
+  temp_dir: "./data/temp"
