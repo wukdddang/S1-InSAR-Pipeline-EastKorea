@@ -33,6 +33,7 @@
 - **Python 3.9 이상**
 - **NASA Earthdata 계정**: [가입하기](https://urs.earthdata.nasa.gov/users/new) - ASF Data Search 사용을 위해 필요
 - **충분한 디스크 공간**: SAR 데이터는 제품당 약 4-8GB
+- **Windows 사용자**: InSAR 처리를 위해 **WSL2 권장** (ISCE2는 Linux/Mac만 지원)
 
 ### Installation
 
@@ -43,7 +44,28 @@ git clone https://github.com/wukdddang/S1-InSAR-Pipeline-EastKorea.git
 cd S1-InSAR-Pipeline-EastKorea
 ```
 
-#### 2. 가상 환경 생성 (권장)
+#### 2. Windows 사용자: WSL2 설치 (InSAR 처리 필수!)
+
+**Windows에서 코드 기반 InSAR 처리를 하려면 WSL2가 필요합니다.**
+
+```bash
+# PowerShell (관리자 권한으로 실행)
+wsl --install -d Ubuntu-22.04
+
+# 재부팅 후 Ubuntu 실행
+wsl
+
+# Ubuntu에서 Miniconda 설치
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+source ~/.bashrc
+```
+
+**WSL2 설치 후 아래 단계 진행 (WSL Ubuntu 터미널에서)**
+
+> 💡 **Tip**: WSL에서 Windows 파일 접근: `/mnt/c/Users/사용자이름/`
+
+#### 2-1. 가상 환경 생성 (권장)
 
 > ⚠️ **중요**: conda와 venv 중 **하나만 선택**하세요! 둘 다 할 필요 없습니다.
 
@@ -70,9 +92,26 @@ source venv/bin/activate
 
 #### 3. 패키지 설치
 
+**옵션 A: Conda 사용 (권장 ⭐)**
+
+```bash
+# 1. 지리공간 라이브러리 설치 (conda 필수!)
+conda install -c conda-forge gdal rasterio geopandas fiona pyproj shapely netCDF4 opencv
+
+# 2. InSAR 처리 소프트웨어 (선택 사항)
+conda install -c conda-forge isce2
+
+# 3. 나머지 Python 패키지
+pip install -r requirements.txt
+```
+
+**옵션 B: pip만 사용 (비권장)**
+
 ```bash
 pip install -r requirements.txt
 ```
+
+> ⚠️ **중요**: GDAL, rasterio, geopandas 등 지리공간 라이브러리는 pip 설치 시 많은 문제가 발생합니다. **Conda 사용을 강력히 권장합니다!**
 
 #### 4. 인증 정보 설정
 
@@ -357,7 +396,7 @@ python run_data_search.py --max-products 1
 
 ```yaml
 asf:
-  username: changuk # 따옴표 없이
+  username: username # 따옴표 없이
   password: your_password # 특수문자 주의
 ```
 
@@ -366,7 +405,7 @@ asf:
 ```yaml
 # 특수문자가 있으면 작은따옴표 사용
 asf:
-  username: changuk
+  username: username
   password: "P@ssw0rd!123"
 ```
 
