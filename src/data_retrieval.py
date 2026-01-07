@@ -129,10 +129,21 @@ class Sentinel1Retriever:
             # DataFrame으로 변환
             products_data = []
             for result in results:
+                path_value = result.properties.get('pathNumber')
+                
+                # orbit은 absolute orbit number이므로 relative orbit (track)으로 변환
+                # Sentinel-1의 relative orbit number는 1-175 범위
+                absolute_orbit = result.properties.get('orbit')
+                if absolute_orbit is not None:
+                    track_value = ((absolute_orbit - 1) % 175) + 1
+                else:
+                    track_value = 'N/A'
+                
                 products_data.append({
                     'title': result.properties['sceneName'],
                     'date': result.properties['startTime'],
-                    'orbit': result.properties.get('pathNumber', 'N/A'),
+                    'path': path_value if path_value is not None else 'N/A',
+                    'track': track_value,
                     'size_mb': result.properties.get('bytes', 0) / (1024**2),
                     'url': result.properties.get('url', ''),
                     'product': result
@@ -144,6 +155,119 @@ class Sentinel1Retriever:
             logger.error(f"검색 실패: {e}")
             return pd.DataFrame()
     
+    def search_image_pair(
+        self,
+        start_date: str = '2023-01-01',
+        end_date: str = '2023-12-31',
+        temporal_baseline_days: int = 12,
+        max_results: int = 100
+    ) -> pd.DataFrame:
+        """
+        InSAR용 영상 쌍 검색 (같은 프레임, 지정된 시간 간격)
+        
+        Parameters:
+        - start_date: 시작 날짜
+        - end_date: 종료 날짜
+        - temporal_baseline_days: 영상 간 시간 간격 (일)
+        - max_results: 최대 검색 결과 수
+        
+        Returns:
+        - products_df: 2개의 영상 정보 DataFrame
+        """
+        from datetime import datetime, timedelta
+        
+        logger.info(f"InSAR 영상 쌍 검색 시작 (간격: {temporal_baseline_days}일)")
+        
+        # 1. 전체 기간 검색
+        all_products_df = self.search_products(
+            start_date=start_date,
+            end_date=end_date,
+            max_results=max_results
+        )
+        
+        if all_products_df.empty:
+            logger.warning("검색 결과가 없습니다")
+            return pd.DataFrame()
+        
+        # 2. 날짜와 시간으로 그룹화 (같은 프레임 = 비슷한 시간)
+        all_products_df['datetime'] = pd.to_datetime(all_products_df['date'])
+        all_products_df['time_only'] = all_products_df['datetime'].dt.time
+        all_products_df['date_only'] = all_products_df['datetime'].dt.date
+        
+        # 3. 시간대별로 그룹화 (같은 프레임 찾기)
+        # 시간을 분 단위로 반올림해서 같은 프레임 묶기
+        all_products_df['time_minute'] = all_products_df['datetime'].dt.floor('1min')
+        
+        # 4. 가장 많은 영상이 있는 시간대(프레임) 찾기
+        time_groups = all_products_df.groupby(all_products_df['time_minute'].dt.time)
+        most_common_time = time_groups.size().idxmax()
+        
+        logger.info(f"가장 많은 영상이 있는 촬영 시간: {most_common_time}")
+        
+        # 5. 해당 시간대의 영상만 필터링
+        same_frame_df = all_products_df[
+            all_products_df['time_minute'].dt.time == most_common_time
+        ].copy()
+        
+        if len(same_frame_df) < 2:
+            logger.warning(f"같은 프레임의 영상이 {len(same_frame_df)}개뿐입니다")
+            return same_frame_df
+        
+        # 6. 날짜순 정렬
+        same_frame_df = same_frame_df.sort_values('datetime').reset_index(drop=True)
+        
+        # 7. 파일 크기로 burst 수 추정 (크기가 비슷 = 비슷한 커버리지)
+        # 크기가 너무 작거나 큰 영상 제외 (median 대비 50% 이상 차이나면 제외)
+        median_size = same_frame_df['size_mb'].median()
+        min_size = median_size * 0.5
+        max_size = median_size * 1.5
+        
+        filtered_df = same_frame_df[
+            (same_frame_df['size_mb'] >= min_size) & 
+            (same_frame_df['size_mb'] <= max_size)
+        ].copy()
+        
+        logger.info(f"크기 필터링: {len(same_frame_df)}개 → {len(filtered_df)}개")
+        logger.info(f"크기 범위: {min_size:.0f} - {max_size:.0f} MB (median: {median_size:.0f} MB)")
+        
+        if len(filtered_df) < 2:
+            logger.warning("크기가 비슷한 영상이 충분하지 않습니다. 필터링하지 않고 진행합니다.")
+            filtered_df = same_frame_df
+        
+        # 8. 지정된 시간 간격에 가장 가까운 쌍 찾기
+        target_delta = timedelta(days=temporal_baseline_days)
+        best_pair = None
+        min_diff = timedelta(days=9999)
+        
+        for i in range(len(filtered_df) - 1):
+            for j in range(i + 1, len(filtered_df)):
+                date1 = filtered_df.iloc[i]['datetime']
+                date2 = filtered_df.iloc[j]['datetime']
+                actual_delta = date2 - date1
+                diff = abs(actual_delta - target_delta)
+                
+                if diff < min_diff:
+                    min_diff = diff
+                    best_pair = (filtered_df.index[i], filtered_df.index[j])
+                    actual_baseline = actual_delta.days
+        
+        if best_pair:
+            i, j = best_pair
+            pair_df = same_frame_df.loc[[i, j]].reset_index(drop=True)
+            
+            logger.info(f"✓ 영상 쌍 발견!")
+            logger.info(f"  Reference: {pair_df.iloc[0]['date']} ({pair_df.iloc[0]['size_mb']:.0f} MB)")
+            logger.info(f"  Secondary: {pair_df.iloc[1]['date']} ({pair_df.iloc[1]['size_mb']:.0f} MB)")
+            logger.info(f"  Temporal Baseline: {actual_baseline}일")
+            logger.info(f"  촬영 시간: {most_common_time}")
+            logger.info(f"  크기 차이: {abs(pair_df.iloc[0]['size_mb'] - pair_df.iloc[1]['size_mb']):.0f} MB")
+            
+            # 정리된 열만 반환
+            return pair_df[['title', 'date', 'path', 'track', 'size_mb', 'url', 'product']]
+        else:
+            logger.warning("적절한 영상 쌍을 찾지 못했습니다")
+            return same_frame_df.head(2)
+    
     def display_products(self, products_df: pd.DataFrame):
         """검색된 제품 정보 출력"""
         if products_df.empty:
@@ -153,7 +277,8 @@ class Sentinel1Retriever:
         table = Table(title="Sentinel-1 검색 결과 (ASF)")
         table.add_column("No.", style="cyan")
         table.add_column("날짜", style="green")
-        table.add_column("궤도", style="yellow")
+        table.add_column("Path", style="yellow")
+        table.add_column("Track", style="yellow")
         table.add_column("크기 (MB)", style="magenta")
         table.add_column("제품명", style="blue")
         
@@ -161,7 +286,8 @@ class Sentinel1Retriever:
             table.add_row(
                 str(idx + 1),
                 str(row['date'])[:10] if pd.notna(row['date']) else 'N/A',
-                str(row['orbit']),
+                str(row.get('path', 'N/A')),
+                str(row.get('track', 'N/A')),
                 f"{row['size_mb']:.2f}",
                 row['title'][:50] + "..." if len(row['title']) > 50 else row['title']
             )

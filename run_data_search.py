@@ -50,6 +50,19 @@ def main():
         help='최대 검색 결과 수 (기본값: 100)'
     )
     
+    parser.add_argument(
+        '--pair',
+        action='store_true',
+        help='InSAR용 영상 쌍 검색 모드 (같은 프레임의 2개 영상)'
+    )
+    
+    parser.add_argument(
+        '--temporal-baseline',
+        type=int,
+        default=12,
+        help='영상 쌍 시간 간격 (일 단위, 기본값: 12일)'
+    )
+    
     args = parser.parse_args()
     
     console.print("[bold cyan]====================================[/bold cyan]")
@@ -60,13 +73,25 @@ def main():
     # 검색 실행
     retriever = Sentinel1Retriever()
     
-    console.print(f"[green]검색 기간: {args.start_date} ~ {args.end_date}[/green]\n")
+    console.print(f"[green]검색 기간: {args.start_date} ~ {args.end_date}[/green]")
     
-    products_df = retriever.search_products(
-        start_date=args.start_date,
-        end_date=args.end_date,
-        max_results=args.max_results
-    )
+    if args.pair:
+        # InSAR 영상 쌍 검색 모드
+        console.print(f"[cyan]영상 쌍 모드: 시간 간격 {args.temporal_baseline}일[/cyan]\n")
+        products_df = retriever.search_image_pair(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            temporal_baseline_days=args.temporal_baseline,
+            max_results=args.max_results
+        )
+    else:
+        # 일반 검색 모드
+        console.print()
+        products_df = retriever.search_products(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            max_results=args.max_results
+        )
     
     # 결과 출력
     retriever.display_products(products_df)
