@@ -282,9 +282,10 @@ class Sentinel1Retriever:
         table.add_column("크기 (MB)", style="magenta")
         table.add_column("제품명", style="blue")
         
-        for idx, row in products_df.iterrows():
+        # Reset index to ensure sequential numbering
+        for i, (idx, row) in enumerate(products_df.iterrows(), start=1):
             table.add_row(
-                str(idx + 1),
+                str(i),
                 str(row['date'])[:10] if pd.notna(row['date']) else 'N/A',
                 str(row.get('path', 'N/A')),
                 str(row.get('track', 'N/A')),
@@ -321,8 +322,9 @@ class Sentinel1Retriever:
         
         downloaded_files = []
         
-        for idx, row in products_df.iterrows():
-            logger.info(f"다운로드 중 ({idx + 1}/{len(products_df)}): {row['title']}")
+        # Use enumerate for sequential numbering
+        for i, (idx, row) in enumerate(products_df.iterrows(), start=1):
+            logger.info(f"다운로드 중 ({i}/{len(products_df)}): {row['title']}")
             
             try:
                 product = row['product']

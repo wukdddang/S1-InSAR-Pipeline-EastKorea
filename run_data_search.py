@@ -63,6 +63,14 @@ def main():
         help='영상 쌍 시간 간격 (일 단위, 기본값: 12일)'
     )
     
+    parser.add_argument(
+        '--months',
+        type=str,
+        nargs=2,
+        metavar=('MONTH1', 'MONTH2'),
+        help='특정 월의 영상 검색 (예: --months 01 12)'
+    )
+    
     args = parser.parse_args()
     
     console.print("[bold cyan]====================================[/bold cyan]")
@@ -75,7 +83,87 @@ def main():
     
     console.print(f"[green]검색 기간: {args.start_date} ~ {args.end_date}[/green]")
     
-    if args.pair:
+    if args.months:
+        # 월별 영상 검색 모드
+        import pandas as pd
+        from datetime import datetime
+        
+        console.print(f"[bold cyan]월별 영상 검색: {args.months[0]}월과 {args.months[1]}월[/bold cyan]\n")
+        
+        # 연도 추출
+        year = args.start_date.split('-')[0]
+        month1, month2 = args.months[0].zfill(2), args.months[1].zfill(2)
+        
+        # 1월 검색
+        month1_start = f"{year}-{month1}-01"
+        month1_end = f"{year}-{month1}-28"
+        console.print(f"🔍 {month1}월 영상 검색: {month1_start} ~ {month1_end}")
+        products_df1 = retriever.search_products(
+            start_date=month1_start,
+            end_date=month1_end,
+            max_results=50
+        )
+        
+        # 12월 검색
+        month2_start = f"{year}-{month2}-01"
+        month2_end = f"{year}-{month2}-28"
+        console.print(f"🔍 {month2}월 영상 검색: {month2_start} ~ {month2_end}")
+        products_df2 = retriever.search_products(
+            start_date=month2_start,
+            end_date=month2_end,
+            max_results=50
+        )
+        
+        if products_df1.empty or products_df2.empty:
+            console.print("[bold red]❌ 한 쪽 또는 양쪽 월의 영상을 찾을 수 없습니다.[/bold red]")
+            return
+        
+        # 같은 촬영 시간대의 영상 찾기
+        products_df1['time'] = pd.to_datetime(products_df1['date']).dt.strftime('%H:%M')
+        products_df2['time'] = pd.to_datetime(products_df2['date']).dt.strftime('%H:%M')
+        
+        # 가장 많은 영상이 있는 시간대
+        all_times = pd.concat([products_df1['time'], products_df2['time']])
+        most_common_time = all_times.value_counts().idxmax()
+        
+        # 해당 시간대로 필터링
+        df1_filtered = products_df1[products_df1['time'] == most_common_time]
+        df2_filtered = products_df2[products_df2['time'] == most_common_time]
+        
+        if df1_filtered.empty or df2_filtered.empty:
+            console.print(f"[yellow]⚠️  촬영 시간 {most_common_time}에 맞는 영상이 부족합니다.[/yellow]")
+            df1_filtered = products_df1
+            df2_filtered = products_df2
+        
+        # 크기가 비슷한 영상 선택
+        median_size = pd.concat([df1_filtered['size_mb'], df2_filtered['size_mb']]).median()
+        
+        img1 = df1_filtered.iloc[(df1_filtered['size_mb'] - median_size).abs().argsort()[0]]
+        img2 = df2_filtered.iloc[(df2_filtered['size_mb'] - median_size).abs().argsort()[0]]
+        
+        products_df = pd.DataFrame([img1, img2])
+        
+        # 시간 간격 계산
+        date1 = pd.to_datetime(img1['date'])
+        date2 = pd.to_datetime(img2['date'])
+        temporal_baseline = abs((date2 - date1).days)
+        
+        console.print("\n[bold green]" + "="*80 + "[/bold green]")
+        console.print("[bold green]✅ 월별 영상 쌍 검색 완료![/bold green]")
+        console.print("[bold green]" + "="*80 + "[/bold green]\n")
+        console.print(f"📅 선택된 영상 쌍:")
+        console.print(f"  - {month1}월: {img1['date'].split('T')[0]} (Track {img1['track']}, {img1['size_mb']:.0f} MB)")
+        console.print(f"  - {month2}월: {img2['date'].split('T')[0]} (Track {img2['track']}, {img2['size_mb']:.0f} MB)")
+        console.print(f"  - 시간 간격: {temporal_baseline}일 (~{temporal_baseline/30:.1f}개월)")
+        console.print(f"  - 촬영 시간: {most_common_time}")
+        
+        if not args.download:
+            console.print("\n💡 다운로드하려면:")
+            console.print(f"  python run_data_search.py --start-date {args.start_date} --end-date {args.end_date} --months {args.months[0]} {args.months[1]} --download")
+        
+        console.print("\n[bold green]" + "="*80 + "[/bold green]")
+        
+    elif args.pair:
         # InSAR 영상 쌍 검색 모드
         console.print(f"[cyan]영상 쌍 모드: 시간 간격 {args.temporal_baseline}일[/cyan]\n")
         products_df = retriever.search_image_pair(
